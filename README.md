@@ -92,11 +92,11 @@ sudo touch /var/ossec/logs/viper.log
 - Integration with GreyNoise [[7](https://www.greynoise.io/)]
 
 
-<br><br>
+<br>
 
 ---
 
-<br><br>
+<br>
 
 
 ## 🤝 Help Wanted
