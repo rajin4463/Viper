@@ -10,7 +10,7 @@ LOG_FILE = "/var/ossec/logs/viper.log"
 VT_API_KEY = "<YOUR_VT_API_KEY>"
 OTX_API_KEY = "<YOUR_OTX_API_KEY>"
 OPEN_AI_KEY = "<YOUR_OPENAI_API_KEY>"
-OPEN_AI_MODEL = "gpt-4o-mini"
+OPEN_AI_MODEL = "gpt-4o-mini" # You can change this to any other model you have access to
 SLACK_WEBHOOK_URL = "<YOUR_SLACK_WEBHOOK_URL>"
 
 OS_SUCCESS = 0
