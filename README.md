@@ -87,6 +87,9 @@ sudo systemctl restart wazuh-manager
 sudo touch /var/ossec/logs/viper.log
 ```
 
+## 💡 Example Summarised & Enriched Slack Alert 
+![alt text](README_Data/image.png)
+
 ## 📝 In the Works
 - Integration with AubseIPDB [[6](https://www.abuseipdb.com/)]
 - Integration with GreyNoise [[7](https://www.greynoise.io/)]
