@@ -103,4 +103,5 @@ sudo touch /var/ossec/logs/viper.log
 
 
 ## 🤝 Help Wanted
+If you have any ideas or want to help improve the project please open a issue on this Github repository.
 I will continue to improve VIPER as time allows me to, help from the community would be greatly appricated. Specialy with integrating new alert types and testing.
