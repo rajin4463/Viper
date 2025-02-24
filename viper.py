@@ -8,6 +8,7 @@ from pathlib import PureWindowsPath, PurePosixPath, Path
 from notification_service import NotificationService
 from message_builder import SecurityMessageBuilder
 
+# Centralized configuration
 LOG_FILE = "/var/ossec/logs/viper.log"
 VT_API_KEY = "427b9da09a5b11515b40d5963eadbe326bc347b7704ffa7170373e15bd1a510d"
 OTX_API_KEY = "<YOUR_OTX_API_KEY>"
@@ -90,8 +91,9 @@ def AI_Summary(message, alert_data):
 
     return response.json()
 
-# Initialize notification service
-notification_service = NotificationService(SLACK_WEBHOOK_URL)
+# Initialize services with centralized log file
+notification_service = NotificationService(SLACK_WEBHOOK_URL, log_file=LOG_FILE)
+message_builder = SecurityMessageBuilder(log_file=LOG_FILE)
 
 # Handle URL alerts by querying VirusTotal
 def handle_url(url, alert_data):
@@ -130,7 +132,6 @@ def handle_sha256_fim(sha256_fim, alert_data):
 
     try:
         alert = alert_data["parameters"]["alert"]
-        message_builder = SecurityMessageBuilder()
         
         # Build the message using builder pattern
         message = (message_builder

@@ -1,8 +1,9 @@
 from typing import Dict, Any, Optional
 from collections import defaultdict
+import datetime
 
 class SecurityMessageBuilder:
-    def __init__(self):
+    def __init__(self, log_file):
         self.sections = defaultdict(str)
         self.section_order = [
             'header',
@@ -13,6 +14,13 @@ class SecurityMessageBuilder:
             'virustotal',
             'otx'
         ]
+        self.log_file = log_file
+
+    def _write_log(self, msg):
+        """Write to log file in the same format as viper"""
+        with open(self.log_file, mode="a") as log_file:
+            timestamp = datetime.datetime.now().strftime("%a %b %d %H:%M:%S %Z %Y")
+            log_file.write(f"{timestamp} MessageBuilder: {msg}\n")
 
     def _add_if_exists(self, value: Any) -> bool:
         """Check if value exists and is not empty"""
@@ -24,6 +32,7 @@ class SecurityMessageBuilder:
 
     def add_header(self, rule_description: Optional[str]) -> 'SecurityMessageBuilder':
         if self._add_if_exists(rule_description):
+            self._write_log(f"Adding header with rule: {rule_description[:50]}...")
             self.sections['header'] = (
                 "*Security Alert*\n\n"
                 f"*{rule_description}*\n"
@@ -31,6 +40,7 @@ class SecurityMessageBuilder:
         return self
 
     def add_basic_details(self, **kwargs) -> 'SecurityMessageBuilder':
+        self._write_log("Adding basic details to message")
         # Only add fields that have valid values
         details = []
         if self._add_if_exists(kwargs.get('alert_time')):
@@ -52,6 +62,7 @@ class SecurityMessageBuilder:
         return self
 
     def add_compliance(self, compliance: Dict[str, Any]) -> 'SecurityMessageBuilder':
+        self._write_log("Adding compliance information")
         # Filter out empty compliance values
         valid_compliance = {k: v for k, v in compliance.items() if self._add_if_exists(v)}
         if valid_compliance:
@@ -60,6 +71,7 @@ class SecurityMessageBuilder:
         return self
 
     def add_file_details(self, details: Dict[str, Any]) -> 'SecurityMessageBuilder':
+        self._write_log("Adding file details")
         # Only add file details if we have valid information
         valid_details = {}
         for key, value in details.items():
@@ -93,6 +105,7 @@ class SecurityMessageBuilder:
         return self
 
     def add_virustotal_results(self, vt_details: Optional[Dict[str, Any]]) -> 'SecurityMessageBuilder':
+        self._write_log("Adding VirusTotal results")
         if vt_details and any(self._add_if_exists(v) for v in vt_details.values()):
             details = ["•  *VirusTotal Details:*"]
             if self._add_if_exists(vt_details.get('positives')):
@@ -105,6 +118,7 @@ class SecurityMessageBuilder:
         return self
 
     def add_otx_results(self, otx_response: Optional[Dict[str, Any]]) -> 'SecurityMessageBuilder':
+        self._write_log("Adding OTX results")
         if not otx_response:
             return self
 
@@ -128,10 +142,12 @@ class SecurityMessageBuilder:
 
     def add_ai_summary(self, ai_content: Optional[str]) -> 'SecurityMessageBuilder':
         if self._add_if_exists(ai_content):
+            self._write_log("Adding AI summary")
             self.sections['ai_summary'] = f"\n{ai_content}\n\n"
         return self
 
     def build(self) -> Dict[str, str]:
+        self._write_log("Building final message")
         # Combine sections in the specified order, only including non-empty sections
         message = ""
         for section in self.section_order:
