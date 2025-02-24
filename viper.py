@@ -10,11 +10,11 @@ from message_builder import SecurityMessageBuilder
 
 # Centralized configuration
 LOG_FILE = "/var/ossec/logs/viper.log"
-VT_API_KEY = "427b9da09a5b11515b40d5963eadbe326bc347b7704ffa7170373e15bd1a510d"
+VT_API_KEY = "<Your_VT_API_KEY>"
 OTX_API_KEY = "<YOUR_OTX_API_KEY>"
 OPEN_AI_KEY = "<YOUR_OPENAI_API_KEY>"
 OPEN_AI_MODEL = "gpt-4o-mini" # You can change this to any other model you have access to
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
+SLACK_WEBHOOK_URL = "<YOUR_SLACK_WEBHOOK_URL>"
 
 OS_SUCCESS = 0
 OS_INVALID = -1
