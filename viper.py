@@ -5,13 +5,15 @@ import datetime
 import requests
 from functools import reduce
 from pathlib import PureWindowsPath, PurePosixPath, Path
+from notification_service import NotificationService
+from message_builder import SecurityMessageBuilder
 
 LOG_FILE = "/var/ossec/logs/viper.log"
-VT_API_KEY = "<YOUR_VT_API_KEY>"
+VT_API_KEY = "427b9da09a5b11515b40d5963eadbe326bc347b7704ffa7170373e15bd1a510d"
 OTX_API_KEY = "<YOUR_OTX_API_KEY>"
 OPEN_AI_KEY = "<YOUR_OPENAI_API_KEY>"
 OPEN_AI_MODEL = "gpt-4o-mini" # You can change this to any other model you have access to
-SLACK_WEBHOOK_URL = "<YOUR_SLACK_WEBHOOK_URL>"
+SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
 
 OS_SUCCESS = 0
 OS_INVALID = -1
@@ -88,6 +90,9 @@ def AI_Summary(message, alert_data):
 
     return response.json()
 
+# Initialize notification service
+notification_service = NotificationService(SLACK_WEBHOOK_URL)
+
 # Handle URL alerts by querying VirusTotal
 def handle_url(url, alert_data):
     try:
@@ -99,140 +104,89 @@ def handle_url(url, alert_data):
         response = requests.get(vt_url, params=params)
         json_response = response.json()
 
-        if json_response.get("response_code") == 0:
+        if (json_response.get("response_code") == 0):
             write_debug_file("ERROR", f"URL: {url} not found on VirusTotal.")
             return
 
         for engine, result in json_response.get("scans", {}).items():
-            if result.get("detected"):
+            if (result.get("detected")):
                 write_debug_file("ERROR", f"Engine: {engine} detected this URL as malicious.")
+
+        # Prepare and send Slack notification
+        message = {
+            "text": f"URL: {url} detected as malicious by VirusTotal."
+        }
+        success, error = notification_service.send_notification(message)
+        if (not success):
+            write_debug_file("ERROR", f"Failed to send notification: {error}")
 
     except Exception as e:
         write_debug_file("ERROR", f"Exception in handle_url: {e}")
 
 # Handle SHA256 FIM alerts by querying VirusTotal and notifying via Slack
-
-
 def handle_sha256_fim(sha256_fim, alert_data):
     json_response = VT_hash256(sha256_fim)
     otx_response = OTX_hash256(sha256_fim)
 
-    # Extract necessary fields from alert_data
     try:
-        alert_time = alert_data["parameters"]["alert"]["timestamp"]
-        file_path = alert_data["parameters"]["alert"]["full_log"].split(
-            '\n')[0].replace('File "', '').replace('" added', '')
-        event_type = alert_data["parameters"]["alert"]["syscheck"]["event"]
-        agent = alert_data["parameters"]["alert"]["agent"]["name"]
-        manager = alert_data["parameters"]["alert"]["manager"]["name"]
-        rule_description = alert_data["parameters"]["alert"]["rule"]["description"]
-        compliance = {
-            "PCI DSS": alert_data["parameters"]["alert"]["rule"]["pci_dss"],
-            "HIPAA": ", ".join(alert_data["parameters"]["alert"]["rule"]["hipaa"]),
-            "TSC": ", ".join(alert_data["parameters"]["alert"]["rule"]["tsc"]),
-            "NIST 800-53": alert_data["parameters"]["alert"]["rule"]["nist_800_53"],
-            "GPG13": alert_data["parameters"]["alert"]["rule"]["gpg13"],
-            "GDPR": alert_data["parameters"]["alert"]["rule"]["gdpr"]
-        }
-        file_details = {
-            "Owner": alert_data["parameters"]["alert"]["syscheck"]["uname_after"],
-            "Permissions": alert_data["parameters"]["alert"]["syscheck"]["perm_after"],
-            "uid_after": alert_data["parameters"]["alert"]["syscheck"]["uid_after"],
-            "gid_after": alert_data["parameters"]["alert"]["syscheck"]["gid_after"],
-            "Size": alert_data["parameters"]["alert"]["syscheck"]["size_after"],
-            "Inode": alert_data["parameters"]["alert"]["syscheck"]["inode_after"],
-            "MD5": alert_data["parameters"]["alert"]["syscheck"]["md5_after"],
-            "SHA1": alert_data["parameters"]["alert"]["syscheck"]["sha1_after"],
-            "SHA256": sha256_fim
-        }
-
-    except KeyError as e:
-        write_debug_file("ERROR", f"Missing key in alert data: {e}")
-
-    # Prepare Slack message base
-    base_message = {
-        "text": f""" 
-*Security Alert*
-
-*{rule_description}*
-
-*Additional Details*
-
-*Alert Time:* {alert_time}
-
-•  *Path:* {file_path}
-•  *Event Type:* {event_type}
-•  *Agent:* {agent} (IP: {alert_data["parameters"]["alert"]["agent"]["ip"]})
-•  *Manager:* {manager}
-•  *Compliance:* {', '.join([f'{k}: {v}' for k, v in compliance.items()])}
-•  *File Details:*
-    - *Permissions:* {file_details['Permissions']}
-    - *Owner:* {file_details['Owner']} (UID: {file_details['uid_after']}, GID: {file_details['gid_after']})
-    - *Size:* {file_details['Size']} bytes
-    - *Inode:* {file_details['Inode']}
-    - *Hashes:*
-        - *MD5*: {file_details['MD5']}
-        - *SHA1*: {file_details['SHA1']}
-        - *SHA256*: {file_details['SHA256']}
-"""
-    }
-
-    # Add VirusTotal details if found
-    if json_response.get("response_code") == 1:
-        vt_details = {
-            "positives": json_response.get("positives", 0),
-            "total": json_response.get("total", 0),
-            "permalink": json_response.get("permalink", "")
-        }
-        base_message["text"] += f"""
-•  *VirusTotal Details:*
-        - *Positives:* {vt_details['positives']}
-        - *Total:* {vt_details['total']}
-        - *Detection URL:* {vt_details['permalink']}"""
-
-    # Add OTX details if found
-    if otx_response:
-        pulse_info = otx_response.get("pulse_info", {})
-        pulse_count = pulse_info.get("count", 0)
-        references = pulse_info.get("references", [])
-        adversary = pulse_info.get("related", []).get(
-            "alienvault", []).get("adversary", [])
-        other_adversary = pulse_info.get("related", []).get(
-            "other", []).get("adversary", [])
-
-        base_message["text"] += f"""
-•  *AlienVault OTX Details:*
-        - *Adversary:* {adversary}
-        - *Other Adversary:* {other_adversary}
-        - *Pulse Count:* {pulse_count}
-        - *References*: {references}"""
-
-    # Get AI summary and insert it into the message
-    ai_summary = AI_Summary({"text": base_message["text"]}, alert_data)
-    # Assuming the content is under a 'content' key in the 'message' dictionary
-    if isinstance(ai_summary, dict) and 'choices' in ai_summary and len(ai_summary['choices']) > 0:
-        ai_summary_content = ai_summary['choices'][0]['message']['content']
-    else:
-        # Fallback in case the structure is different
-        ai_summary_content = str(ai_summary)
+        alert = alert_data["parameters"]["alert"]
+        message_builder = SecurityMessageBuilder()
         
-    base_message["text"] = base_message["text"].replace(
-        f"*{rule_description}*\n\n",
-        f"*{rule_description}*\n\n{ai_summary_content}\n\n"
-    )
-    # Send the message
-    headers = {'Content-type': 'application/json'}
-    try:
-        slack_response = requests.post(
-            SLACK_WEBHOOK_URL, data=json.dumps(base_message), headers=headers)
-        if slack_response.status_code != 200:
-            write_debug_file("ERROR", f"Slack notification failed with status code {slack_response.status_code}: {slack_response.text}")
-        else:
-            write_debug_file("ERROR", "Slack notification sent successfully.")
+        # Build the message using builder pattern
+        message = (message_builder
+            .add_header(alert["rule"]["description"])
+            .add_basic_details(
+                alert_time=alert["timestamp"],
+                file_path=alert["full_log"].split('\n')[0].replace('File "', '').replace('" added', ''),
+                event_type=alert["syscheck"]["event"],
+                agent=alert["agent"]["name"],
+                agent_ip=alert["agent"]["ip"],
+                manager=alert["manager"]["name"]
+            )
+            .add_compliance({
+                "PCI DSS": alert["rule"]["pci_dss"],
+                "HIPAA": ", ".join(alert["rule"]["hipaa"]),
+                "TSC": ", ".join(alert["rule"]["tsc"]),
+                "NIST 800-53": alert["rule"]["nist_800_53"],
+                "GPG13": alert["rule"]["gpg13"],
+                "GDPR": alert["rule"]["gdpr"]
+            })
+            .add_file_details({
+                "Owner": alert["syscheck"]["uname_after"],
+                "Permissions": alert["syscheck"]["perm_after"],
+                "uid_after": alert["syscheck"]["uid_after"],
+                "gid_after": alert["syscheck"]["gid_after"],
+                "Size": alert["syscheck"]["size_after"],
+                "Inode": alert["syscheck"]["inode_after"],
+                "MD5": alert["syscheck"]["md5_after"],
+                "SHA1": alert["syscheck"]["sha1_after"],
+                "SHA256": sha256_fim
+            }))
+
+        # Add VirusTotal details if found
+        if (json_response.get("response_code") == 1):
+            message.add_virustotal_results({
+                "positives": json_response.get("positives", 0),
+                "total": json_response.get("total", 0),
+                "permalink": json_response.get("permalink", "")
+            })
+
+        # Add OTX details if found
+        if (otx_response):
+            message.add_otx_results(otx_response)
+
+        # Get AI summary
+        ai_summary = AI_Summary({"text": message.build()["text"]}, alert_data)
+        if (isinstance(ai_summary, dict) and 'choices' in ai_summary and len(ai_summary['choices']) > 0):
+            ai_summary_content = ai_summary['choices'][0]['message']['content']
+            message.add_ai_summary(ai_summary_content)
+
+        # Send the final message
+        notification_service.queue_notification(message.build())
+        notification_service.process_queue()
+
     except Exception as e:
-        write_debug_file(
-            "ERROR", f"Exception while sending Slack notification: {e}")
-        write_debug_file("ERROR", f"Slack message: {base_message}")
+        write_debug_file("ERROR", f"Exception in handle_sha256_fim: {e}")
 
 # Process alert to determine its type
 
@@ -248,9 +202,9 @@ def process_type(alert):
     sha256_fim = safe_get(alert, "parameters", "alert",
                           "syscheck", "sha256_after")
 
-    if url is not None:
+    if (url is not None):
         handle_url(url, alert)
-    if sha256_fim is not None:
+    if (sha256_fim is not None):
         handle_sha256_fim(sha256_fim, alert)
 
 
